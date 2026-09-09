@@ -1,0 +1,108 @@
+import numpy as np
+from bayesian_optimizer import BayesianOptimizer
+
+# =====================================================================
+# STEP 1: Define Your Input Parameters (Features) & Limits
+# =====================================================================
+# Specify parameter names and their low/high continuous search bounds.
+parameters = [
+    {"name": "temperature", "type": "continuous", "low": 20.0, "high": 100.0},
+    {"name": "pH",          "type": "continuous", "low": 2.0,  "high": 12.0},
+    {"name": "flow_rate",   "type": "continuous", "low": 0.5,  "high": 10.0},
+]
+
+# =====================================================================
+# STEP 2: Define Your Target Objectives (Outcomes)
+# =====================================================================
+# Specify targets, whether to maximize ('max') or minimize ('min'),
+# and optional tolerances.
+objectives = [
+    {"name": "yield", "goal": "max", "tolerance": 0.05},
+    {"name": "cost",  "goal": "min", "tolerance": 0.10},
+]
+
+# Configure settings
+config = {
+    "general": {
+        "batches": 2,              # Number of experiments to recommend per iteration
+        "sampling_strategies": 2,  # 1 exploitation + 1 exploration candidate
+        "random_seed": 42
+    },
+    "model": {
+        "num_epochs": 300,         # BNN training steps (use 500-1500 for final runs)
+        "num_draws": 200,          # Posterior draws
+    },
+    "parameters": parameters,
+    "objectives": objectives
+}
+
+# (Optional) STEP 2.5: Define any hard constraints (e.g. safety rules)
+def my_constraints(p):
+    # Example: temperature * flow_rate must be <= 500
+    if p['temperature'] * p['flow_rate'] > 500.0:
+        return False
+    return True
+
+# Initialize the Optimizer
+optimizer = BayesianOptimizer(config_dict=config, known_constraints=my_constraints)
+
+
+# =====================================================================
+# STEP 3: Format Your Past Experimental Data
+# =====================================================================
+# Combine parameter inputs and measured target outputs into a list of dicts.
+# Note: For failed/infeasible experiments, set objective values to None or np.nan!
+past_observations = [
+    # Experiment 1 (Success)
+    {"temperature": 25.0, "pH": 7.0, "flow_rate": 2.0, "yield": 65.4, "cost": 15.2},
+    
+    # Experiment 2 (Success)
+    {"temperature": 60.0, "pH": 5.5, "flow_rate": 4.5, "yield": 82.1, "cost": 22.0},
+    
+    # Experiment 3 (Failed/Infeasible experiment - e.g. reaction crashed)
+    {"temperature": 95.0, "pH": 11.5, "flow_rate": 8.0, "yield": None, "cost": None},
+]
+
+
+# =====================================================================
+# STEP 4: Get Next Recommended Experiments
+# =====================================================================
+print("Analyzing past observations and training model...")
+
+# Ask optimizer for next best parameter sets to test in lab
+recommendations = optimizer.recommend(observations=past_observations)
+
+print("\n--- NEXT RECOMMENDED EXPERIMENTS ---")
+for i, rec in enumerate(recommendations):
+    print(f"Recommendation #{i+1}:")
+    for param_name, val in rec.items():
+        print(f"  {param_name}: {val:.4f}")
+    print()
+
+
+Case B: Loading Experiments from CSV / Pandas DataFrame
+If your past experimental results are stored in a CSV file, convert the DataFrame directly into observation dicts:
+
+
+import pandas as pd
+# Load past dataset
+df = pd.read_csv("my_experiments.csv")
+# Convert DataFrame to list of dicts
+observations = df.to_dict(orient="records")
+# Ask optimizer for next recommendations
+recommendations = optimizer.recommend(observations=observations)
+
+Case C: Continuous Interactive Iteration Loop
+After you test the recommended candidates in the lab, append your new results to the observation list and run recommend() again:
+
+# Add new measured result from the lab
+new_experiment_result = {
+    'temperature': 45.2, 
+    'pH': 6.8, 
+    'flow_rate': 3.1, 
+    'yield': 88.5, 
+    'cost': 18.0
+}
+past_observations.append(new_experiment_result)
+# Get recommendations for the NEXT iteration
+next_recommendations = optimizer.recommend(observations=past_observations)
